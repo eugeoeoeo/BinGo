@@ -98,20 +98,53 @@ let history  = [];  // rolling label window for smoothing
 
 // ── Model loading ────────────────────────────────────────
 async function loadModel() {
+  // Must be served over HTTP/HTTPS — file:// blocks fetch
+  if (location.protocol === 'file:') {
+    setStatus('error', 'Open via a server, not file://');
+    showError('⚠️', 'Open via a server', 'You must open BinGo through a local server (e.g. npx serve .) or a deployed URL — not by double-clicking the HTML file.');
+    return;
+  }
+
   setStatus('loading', 'Loading AI model…');
+
+  // Wait for tmImage to be defined (CDN loads async)
+  let attempts = 0;
+  while (typeof tmImage === 'undefined' && attempts < 30) {
+    await new Promise(r => setTimeout(r, 200));
+    attempts++;
+  }
+
+  if (typeof tmImage === 'undefined') {
+    setStatus('error', 'AI library failed to load');
+    showError('⚠️', 'Network error', 'Could not load the AI library. Check your internet connection and refresh.');
+    btnStart.disabled = false;
+    return;
+  }
+
   try {
-    if (typeof tmImage === 'undefined') {
-      throw new Error('Teachable Machine library not loaded. Check your internet connection.');
-    }
     tmModel = await tmImage.load(MODEL_URL, METADATA_URL);
     setStatus('ready', 'AI model ready');
-    // Auto-start camera immediately after model loads
-    startCamera();
+    startCamera(); // auto-start camera + request permission
   } catch (err) {
     console.error('[BinGo] Model load failed:', err);
-    setStatus('error', 'Could not load AI model — check console');
-    btnStart.disabled = false; // allow manual retry attempt
+    const msg = err.message || '';
+    if (msg.includes('404') || msg.includes('fetch')) {
+      setStatus('error', 'Model files not found');
+      showError('⚠️', 'Model not found', 'Make sure the waste_sorting_ai/ folder is in the same directory as index.html.');
+    } else {
+      setStatus('error', 'Could not load AI model');
+      showError('⚠️', 'Model error', 'Failed to load: ' + msg);
+    }
+    btnStart.disabled = false;
   }
+}
+
+function showError(icon, title, body) {
+  camIdle.hidden  = true;
+  camError.hidden = false;
+  camError.querySelector('.cam-state-icon').textContent = icon;
+  camError.querySelector('.cam-state-title').textContent = title;
+  document.getElementById('errorMsg').textContent = body;
 }
 
 function setStatus(state, label) {
