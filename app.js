@@ -1,4 +1,4 @@
-﻿/**
+/**
  * BinGo — app.js
  * Teachable Machine Image + TF.js, local model
  * Labels from metadata.json: RECYCLABLE, RESIDUAL, BIODEGRADEABLE, NONE
@@ -100,12 +100,17 @@ let history  = [];  // rolling label window for smoothing
 async function loadModel() {
   setStatus('loading', 'Loading AI model…');
   try {
+    if (typeof tmImage === 'undefined') {
+      throw new Error('Teachable Machine library not loaded. Check your internet connection.');
+    }
     tmModel = await tmImage.load(MODEL_URL, METADATA_URL);
     setStatus('ready', 'AI model ready');
-    btnStart.disabled = false;
+    // Auto-start camera immediately after model loads
+    startCamera();
   } catch (err) {
     console.error('[BinGo] Model load failed:', err);
     setStatus('error', 'Could not load AI model — check console');
+    btnStart.disabled = false; // allow manual retry attempt
   }
 }
 
@@ -264,10 +269,10 @@ function highlightGuide(id) {
   }
 }
 
-// ── Init ──────────────────────────────────────────────────
+// ── Init ────────────────────────────────────────────────
 (function init() {
   btnStart.disabled = true;
   btnStop.disabled  = true;
   showPanel('placeholder');
-  loadModel();
+  loadModel(); // loads model then auto-starts camera
 }());

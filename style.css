@@ -1,4 +1,4 @@
-﻿/* ================================================================
+/* ================================================================
    BinGo — style.css
    Design: Dark, modern, educational. Outfit font. Three bin colors.
    Mobile-first. Single-page. No framework.
@@ -171,13 +171,17 @@ body {
 
 /* Cam states (idle / error) */
 .cam-state {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
   padding: 32px 24px;
   gap: 8px;
   z-index: 2;
+  background: var(--ink-2);
 }
 
 .cam-state-icon { font-size: 2.5rem; line-height: 1; }
