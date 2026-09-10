@@ -5,6 +5,12 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Critical: Ensure [hidden] attribute ALWAYS overrides class-level display properties */
+[hidden] {
+  display: none !important;
+}
+
+
 :root {
   --green:  #22c55e;
   --blue:   #3b82f6;
@@ -131,6 +137,8 @@ html, body {
   justify-content: center;
   background: radial-gradient(ellipse at 50% 40%, #0f1a14 0%, #09090b 70%);
 }
+.screen[hidden] { display: none !important; }
+
 
 .idle-center {
   display: flex;
@@ -227,6 +235,8 @@ html, body {
   z-index: 10;
   pointer-events: none;
 }
+.scan-overlay[hidden] { display: none !important; }
+
 
 /* Corner frame */
 .scan-frame {
@@ -279,6 +289,7 @@ html, body {
   gap: 10px;
   pointer-events: none;
 }
+.result-sheet[hidden] { display: none !important; }
 
 /* ── Result Pill (scanning / no item) ── */
 .result-pill {
@@ -297,6 +308,8 @@ html, body {
   -webkit-backdrop-filter: blur(16px);
   pointer-events: auto;
 }
+.result-pill[hidden] { display: none !important; }
+
 
 .pill-dot {
   width: 7px; height: 7px;
@@ -319,6 +332,8 @@ html, body {
   position: relative;
   overflow: hidden;
 }
+.result-card[hidden] { display: none !important; }
+
 
 /* Colored left accent bar by bin type */
 .result-card::before {
@@ -471,6 +486,8 @@ html, body {
   -webkit-backdrop-filter: blur(12px);
   pointer-events: auto;
 }
+.guide-toggle[hidden] { display: none !important; }
+
 
 /* ── Guide Modal ── */
 .guide-modal {

@@ -33,7 +33,7 @@ const BIN = {
   },
 };
 
-// DOM
+// DOM Elements
 const $ = id => document.getElementById(id);
 
 const webcam       = $('webcam');
@@ -56,7 +56,7 @@ const guideToggle  = $('guideToggle');
 const guideModal   = $('guideModal');
 const guideClose   = $('guideClose');
 
-// Result card parts
+// Result card elements
 const rcCategory   = $('rcCategory');
 const rcBinDot     = $('rcBinDot');
 const rcBinText    = $('rcBinText');
@@ -66,10 +66,39 @@ const rcBarFill    = $('rcBarFill');
 const rcTip        = $('rcTip');
 const unsureConfPct= $('unsureConfPct');
 
-let tmModel = null;
-let rafId   = null;
-let stream  = null;
-let history = [];
+let tmModel          = null;
+let rafId            = null;
+let stream           = null;
+let history          = [];
+let isStartingCamera = false;
+
+// ── UI State Machine ──
+function setUIState(state) {
+  // 'idle' | 'scanning' | 'error'
+  const isIdle     = state === 'idle';
+  const isScanning = state === 'scanning';
+  const isError    = state === 'error';
+
+  screenIdle.hidden  = !isIdle;
+  screenError.hidden = !isError;
+  scanOverlay.hidden = !isScanning;
+  resultSheet.hidden = !isScanning;
+  guideToggle.hidden = !isScanning;
+
+  btnStart.disabled  = isScanning;
+  btnStop.disabled   = !isScanning;
+}
+
+function showErrorScreen(title, body) {
+  $('errorTitle').textContent = title;
+  $('errorBody').textContent  = body;
+  setUIState('error');
+}
+
+function setStatus(state, label) {
+  statusDot.className = 'status-dot ' + state;
+  statusText.textContent = label;
+}
 
 // ── Guide modal ──
 function openGuide()  { guideModal.classList.add('open'); }
@@ -84,7 +113,128 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeGuide();
 });
 
-// ── Model load ──
+// ── Camera Management ──
+async function getCameraStream() {
+  const attempts = [
+    // 1. Back camera for phone waste scanning
+    {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    },
+    // 2. Any camera with ideal width
+    {
+      video: { width: { ideal: 1280 } },
+      audio: false
+    },
+    // 3. Fallback: bare minimum video constraint (laptop webcams / external cams)
+    {
+      video: true,
+      audio: false
+    }
+  ];
+
+  let lastErr = null;
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      lastErr = err;
+      // If user denied permission or system blocked it, don't spam attempts
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.name === 'SecurityError') {
+        throw err;
+      }
+    }
+  }
+  throw lastErr;
+}
+
+async function startCamera(isUserGesture = false) {
+  if (isStartingCamera || (stream && webcam.srcObject)) return;
+  isStartingCamera = true;
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showErrorScreen('Camera not supported', 'Your browser does not support camera access or the connection is not secure (HTTPS required).');
+    isStartingCamera = false;
+    return;
+  }
+
+  try {
+    stream = await getCameraStream();
+    webcam.srcObject = stream;
+    webcam.classList.add('active');
+
+    try {
+      await webcam.play();
+    } catch (playErr) {
+      console.warn('[BinGo] video.play() warning:', playErr);
+    }
+
+    setUIState('scanning');
+
+    if (tmModel) {
+      showResult('pill', 'Point at an item to sort it');
+      history = [];
+      if (!rafId) rafId = requestAnimationFrame(predict);
+    } else {
+      showResult('pill', 'Loading AI model…');
+    }
+  } catch (err) {
+    console.error('[BinGo] Camera error:', err);
+    // If auto-start on load failed due to browser autoplay policy (NotAllowedError without user gesture),
+    // keep the clean idle screen ready so user can tap "Start Scanning" directly.
+    if (!isUserGesture && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
+      console.info('[BinGo] Browser requires user tap to start camera.');
+      setUIState('idle');
+      modelHint.textContent = tmModel ? 'AI ready — tap Start Scanning below' : 'Tap Start Scanning below';
+    } else {
+      handleCamError(err);
+    }
+  } finally {
+    isStartingCamera = false;
+  }
+}
+
+function stopCamera() {
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  webcam.srcObject = null;
+  webcam.classList.remove('active');
+
+  setUIState('idle');
+  closeGuide();
+  history = [];
+}
+
+function handleCamError(err) {
+  const msgs = {
+    NotAllowedError:       'Camera access was blocked. Please click the lock or camera icon in your browser address bar to allow camera access, then tap Try Again.',
+    PermissionDeniedError: 'Camera permission was denied. Please allow camera access in your browser settings, then tap Try Again.',
+    NotFoundError:         'No camera detected on this device. Please connect or enable a camera.',
+    NotReadableError:      'Camera is in use by another application. Please close other camera apps and tap Try Again.',
+    OverconstrainedError:  'Requested camera format is not supported by your device.',
+  };
+  showErrorScreen('Camera unavailable', msgs[err.name] || 'Could not access the camera. Please allow camera access and try again.');
+}
+
+// Camera buttons
+btnStart.addEventListener('click', () => startCamera(true));
+btnStop.addEventListener('click',  stopCamera);
+btnRetry.addEventListener('click', () => {
+  setUIState('idle');
+  startCamera(true);
+});
+
+// ── Model Loading ──
 async function loadModel() {
   if (location.protocol === 'file:') {
     showErrorScreen('Open via a server', 'Open BinGo through a deployed URL or a local server — not by double-clicking the HTML file.');
@@ -95,9 +245,9 @@ async function loadModel() {
   setStatus('loading', 'Loading AI…');
   modelHint.textContent = 'Loading AI model…';
 
-  // Wait up to 6s for tmImage global to be available
+  // Wait up to 8s for tmImage global to be available
   let wait = 0;
-  while (typeof tmImage === 'undefined' && wait < 30) {
+  while (typeof tmImage === 'undefined' && wait < 40) {
     await new Promise(r => setTimeout(r, 200));
     wait++;
   }
@@ -106,7 +256,6 @@ async function loadModel() {
     showErrorScreen('Library failed to load', 'Check your internet connection and refresh the page.');
     setStatus('error', 'Library error');
     modelHint.textContent = 'Library not loaded';
-    btnStart.disabled = false;
     return;
   }
 
@@ -114,9 +263,13 @@ async function loadModel() {
     tmModel = await tmImage.load(MODEL_URL, METADATA_URL);
     setStatus('ready', 'AI ready');
     modelHint.textContent = 'AI model loaded ✓';
-    btnStart.disabled = false;
-    // Auto-start: request camera permission immediately
-    startCamera();
+
+    // If camera is already active, start predictions immediately
+    if (stream && webcam.srcObject) {
+      showResult('pill', 'Point at an item to sort it');
+      history = [];
+      if (!rafId) rafId = requestAnimationFrame(predict);
+    }
   } catch (err) {
     console.error('[BinGo] Model load error:', err);
     const msg = (err.message || '').includes('404')
@@ -125,96 +278,18 @@ async function loadModel() {
     showErrorScreen('Model error', msg);
     setStatus('error', 'Model error');
     modelHint.textContent = 'Model failed to load';
-    btnStart.disabled = false;
   }
 }
 
-function setStatus(state, label) {
-  statusDot.className = 'status-dot ' + state;
-  statusText.textContent = label;
-}
-
-// ── Camera ──
-btnStart.addEventListener('click', startCamera);
-btnStop.addEventListener('click',  stopCamera);
-btnRetry.addEventListener('click', () => {
-  screenError.hidden = true;
-  screenIdle.hidden  = false;
-  if (tmModel) startCamera();
-  else loadModel();
-});
-
-async function startCamera() {
-  if (!tmModel) return;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } },
-      audio: false,
-    });
-    webcam.srcObject = stream;
-    webcam.classList.add('active');
-
-    // Hide idle screen, show scan UI
-    screenIdle.hidden  = true;
-    screenError.hidden = true;
-    scanOverlay.hidden = false;
-    resultSheet.hidden = false;
-    guideToggle.hidden = false;
-
-    btnStart.disabled = true;
-    btnStop.disabled  = false;
-
-    showResult('pill', 'Show me one item!');
-    history = [];
-    rafId = requestAnimationFrame(predict);
-  } catch (err) {
-    handleCamError(err);
-  }
-}
-
-function stopCamera() {
-  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  webcam.srcObject = null;
-  webcam.classList.remove('active');
-
-  screenIdle.hidden  = false;
-  scanOverlay.hidden = true;
-  resultSheet.hidden = true;
-  guideToggle.hidden = true;
-  guideModal.hidden  = true;
-
-  btnStart.disabled = false;
-  btnStop.disabled  = true;
-  history = [];
-}
-
-function handleCamError(err) {
-  const msgs = {
-    NotAllowedError:       'Camera permission denied. Allow access in your browser settings, then try again.',
-    PermissionDeniedError: 'Camera permission denied.',
-    NotFoundError:         'No camera found on this device.',
-    NotReadableError:      'Camera is busy. Close other apps using the camera.',
-  };
-  showErrorScreen('Camera unavailable', msgs[err.name] || 'Could not access the camera.');
-  btnStop.disabled = true;
-  btnStart.disabled = false;
-}
-
-function showErrorScreen(title, body) {
-  screenIdle.hidden  = true;
-  screenError.hidden = false;
-  $('errorTitle').textContent = title;
-  $('errorBody').textContent  = body;
-}
-
-// ── Prediction ──
+// ── Prediction Loop ──
 async function predict() {
   if (!tmModel || !webcam.srcObject) return;
   try {
     const preds = await tmModel.predict(webcam);
     processPredictions(preds);
-  } catch(e) { /* transient */ }
+  } catch (e) {
+    /* transient prediction frame error */
+  }
   rafId = requestAnimationFrame(predict);
 }
 
@@ -285,10 +360,10 @@ function showResult(mode, text) {
   }
 }
 
-// ── Init ──
+// ── Application Initialization ──
 (function init() {
-  btnStart.disabled = true;
-  btnStop.disabled  = true;
-  guideToggle.hidden = true;
+  setUIState('idle');
+  // Load AI model and request camera permission immediately
   loadModel();
+  startCamera(false);
 }());
