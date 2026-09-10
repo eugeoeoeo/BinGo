@@ -1,183 +1,166 @@
+﻿'use strict';
 /**
  * BinGo — app.js
- * Teachable Machine Image + TF.js, local model
- * Labels from metadata.json: RECYCLABLE, RESIDUAL, BIODEGRADEABLE, NONE
+ * Full-screen camera app. AI result overlaid at bottom.
+ * Model: waste_sorting_ai/ (RECYCLABLE, RESIDUAL, BIODEGRADEABLE, NONE)
  */
 
-'use strict';
-
-// ── Config ──────────────────────────────────────────────
 const MODEL_URL    = './waste_sorting_ai/model.json';
 const METADATA_URL = './waste_sorting_ai/metadata.json';
-const THRESHOLD    = 0.75;   // confidence required to show a result
-const SMOOTH_N     = 6;      // consecutive frames before updating UI
+const THRESHOLD    = 0.75;
+const SMOOTH_N     = 6;
 
-// ── Bin data (keyed to the EXACT label strings the model emits) ──
 const BIN = {
   RECYCLABLE: {
-    display: 'RECYCLABLE',
-    binLabel: 'Put it in the Blue Bin',
-    color:    '#3b82f6',
-    swatchBg: 'background:#3b82f6; box-shadow:0 0 8px rgba(59,130,246,0.6)',
-    tip:      'Clean bottles, cans, cardboard, and paper can often be processed and reused.',
-    icon:     '♻️',
-    attr:     'recycle',
-    guideId:  'guideRecycle',
+    display: 'RECYCLABLE', bin: 'Blue Bin', icon: '♻️',
+    color: '#3b82f6', guideId: 'guideRecycle',
+    tip: 'Clean bottles, cans, cardboard and paper can be recycled.',
   },
   RESIDUAL: {
-    display: 'RESIDUAL',
-    binLabel: 'Put it in the Black Bin',
-    color:    '#71717a',
-    swatchBg: 'background:#71717a; box-shadow:0 0 8px rgba(113,113,122,0.5)',
-    tip:      'Some waste cannot be composted or recycled through the available system.',
-    icon:     '🗑️',
-    attr:     'residual',
-    guideId:  'guideResidual',
+    display: 'RESIDUAL', bin: 'Black Bin', icon: '🗑️',
+    color: '#71717a', guideId: 'guideResidual',
+    tip: 'This waste cannot be composted or recycled.',
   },
-  // Model uses typo "BIODEGRADEABLE" — handle both spellings
   BIODEGRADEABLE: {
-    display: 'BIODEGRADABLE',
-    binLabel: 'Put it in the Green Bin',
-    color:    '#22c55e',
-    swatchBg: 'background:#22c55e; box-shadow:0 0 8px rgba(34,197,94,0.6)',
-    tip:      'Food scraps and leaves can naturally break down — great for composting!',
-    icon:     '🌿',
-    attr:     'bio',
-    guideId:  'guideBio',
+    display: 'BIODEGRADABLE', bin: 'Green Bin', icon: '🌿',
+    color: '#22c55e', guideId: 'guideBio',
+    tip: 'Food scraps and organic matter that naturally break down.',
   },
   BIODEGRADABLE: {
-    display: 'BIODEGRADABLE',
-    binLabel: 'Put it in the Green Bin',
-    color:    '#22c55e',
-    swatchBg: 'background:#22c55e; box-shadow:0 0 8px rgba(34,197,94,0.6)',
-    tip:      'Food scraps and leaves can naturally break down — great for composting!',
-    icon:     '🌿',
-    attr:     'bio',
-    guideId:  'guideBio',
+    display: 'BIODEGRADABLE', bin: 'Green Bin', icon: '🌿',
+    color: '#22c55e', guideId: 'guideBio',
+    tip: 'Food scraps and organic matter that naturally break down.',
   },
 };
 
-// ── DOM ─────────────────────────────────────────────────
-const get = id => document.getElementById(id);
+// DOM
+const $ = id => document.getElementById(id);
 
-const webcam       = get('webcam');
-const btnStart     = get('btnStart');
-const btnStop      = get('btnStop');
-const camIdle      = get('camIdle');
-const camError     = get('camError');
-const scanOverlay  = get('scanOverlay');
-const statusDot    = get('statusDot');
-const statusText   = get('statusText');
-const errorMsg     = get('errorMsg');
-
-const resultPlaceholder = get('resultPlaceholder');
-const resultCard        = get('resultCard');
-const resultUnsure      = get('resultUnsure');
-const resultNoItem      = get('resultNoItem');
+const webcam       = $('webcam');
+const btnStart     = $('btnStart');
+const btnStop      = $('btnStop');
+const btnRetry     = $('btnRetry');
+const screenIdle   = $('screenIdle');
+const screenError  = $('screenError');
+const scanOverlay  = $('scanOverlay');
+const resultSheet  = $('resultSheet');
+const resultCard   = $('resultCard');
+const resultPill   = $('resultPill');
+const resultUnsure = $('resultUnsure');
+const pillText     = $('pillText');
+const pillDot      = $('pillDot');
+const statusDot    = $('statusDot');
+const statusText   = $('statusText');
+const modelHint    = $('modelHint');
+const guideToggle  = $('guideToggle');
+const guideModal   = $('guideModal');
+const guideClose   = $('guideClose');
 
 // Result card parts
-const rcIcon      = get('rcIcon');
-const rcName      = get('rcName');
-const rcBinTag    = get('rcBinTag');
-const rcBinSwatch = get('rcBinSwatch');
-const rcBinLabel  = get('rcBinLabel');
-const rcTip       = get('rcTip');
-const rcPct       = get('rcPct');
-const rcFill      = get('rcFill');
-const rcProgressBar = get('rcProgressBar');
+const rcCategory   = $('rcCategory');
+const rcBinDot     = $('rcBinDot');
+const rcBinText    = $('rcBinText');
+const rcIcon       = $('rcIcon');
+const rcConfPct    = $('rcConfPct');
+const rcBarFill    = $('rcBarFill');
+const rcTip        = $('rcTip');
+const unsureConfPct= $('unsureConfPct');
 
-// Unsure card parts
-const rcPctU  = get('rcPctU');
-const rcFillU = get('rcFillU');
+let tmModel = null;
+let rafId   = null;
+let stream  = null;
+let history = [];
 
-// ── State ────────────────────────────────────────────────
-let tmModel  = null;
-let rafId    = null;
-let stream   = null;
-let history  = [];  // rolling label window for smoothing
+// ── Guide modal ──
+guideToggle.addEventListener('click', () => { guideModal.hidden = false; });
+guideClose.addEventListener('click',  () => { guideModal.hidden = true; });
+guideModal.addEventListener('click', e => { if (e.target === guideModal) guideModal.hidden = true; });
 
-// ── Model loading ────────────────────────────────────────
+// ── Model load ──
 async function loadModel() {
-  // Must be served over HTTP/HTTPS — file:// blocks fetch
   if (location.protocol === 'file:') {
-    setStatus('error', 'Open via a server, not file://');
-    showError('⚠️', 'Open via a server', 'You must open BinGo through a local server (e.g. npx serve .) or a deployed URL — not by double-clicking the HTML file.');
+    showErrorScreen('Open via a server', 'Open BinGo through a deployed URL or a local server — not by double-clicking the HTML file.');
+    setStatus('error', 'Must use HTTP/HTTPS');
     return;
   }
 
-  setStatus('loading', 'Loading AI model…');
+  setStatus('loading', 'Loading AI…');
+  modelHint.textContent = 'Loading AI model…';
 
-  // Wait for tmImage to be defined (CDN loads async)
-  let attempts = 0;
-  while (typeof tmImage === 'undefined' && attempts < 30) {
+  // Wait up to 6s for tmImage global to be available
+  let wait = 0;
+  while (typeof tmImage === 'undefined' && wait < 30) {
     await new Promise(r => setTimeout(r, 200));
-    attempts++;
+    wait++;
   }
 
   if (typeof tmImage === 'undefined') {
-    setStatus('error', 'AI library failed to load');
-    showError('⚠️', 'Network error', 'Could not load the AI library. Check your internet connection and refresh.');
+    showErrorScreen('Library failed to load', 'Check your internet connection and refresh the page.');
+    setStatus('error', 'Library error');
+    modelHint.textContent = 'Library not loaded';
     btnStart.disabled = false;
     return;
   }
 
   try {
     tmModel = await tmImage.load(MODEL_URL, METADATA_URL);
-    setStatus('ready', 'AI model ready');
-    startCamera(); // auto-start camera + request permission
+    setStatus('ready', 'AI ready');
+    modelHint.textContent = 'AI model loaded ✓';
+    btnStart.disabled = false;
+    // Auto-start: request camera permission immediately
+    startCamera();
   } catch (err) {
-    console.error('[BinGo] Model load failed:', err);
-    const msg = err.message || '';
-    if (msg.includes('404') || msg.includes('fetch')) {
-      setStatus('error', 'Model files not found');
-      showError('⚠️', 'Model not found', 'Make sure the waste_sorting_ai/ folder is in the same directory as index.html.');
-    } else {
-      setStatus('error', 'Could not load AI model');
-      showError('⚠️', 'Model error', 'Failed to load: ' + msg);
-    }
+    console.error('[BinGo] Model load error:', err);
+    const msg = (err.message || '').includes('404')
+      ? 'Model files not found. Make sure waste_sorting_ai/ is in the project folder.'
+      : 'Failed to load the AI model. Check console for details.';
+    showErrorScreen('Model error', msg);
+    setStatus('error', 'Model error');
+    modelHint.textContent = 'Model failed to load';
     btnStart.disabled = false;
   }
 }
 
-function showError(icon, title, body) {
-  camIdle.hidden  = true;
-  camError.hidden = false;
-  camError.querySelector('.cam-state-icon').textContent = icon;
-  camError.querySelector('.cam-state-title').textContent = title;
-  document.getElementById('errorMsg').textContent = body;
-}
-
 function setStatus(state, label) {
-  statusDot.className = 'mpill-dot ' + state;
+  statusDot.className = 'status-dot ' + state;
   statusText.textContent = label;
 }
 
-// ── Camera start / stop ───────────────────────────────────
+// ── Camera ──
 btnStart.addEventListener('click', startCamera);
-btnStop.addEventListener('click', stopCamera);
+btnStop.addEventListener('click',  stopCamera);
+btnRetry.addEventListener('click', () => {
+  screenError.hidden = true;
+  screenIdle.hidden  = false;
+  if (tmModel) startCamera();
+  else loadModel();
+});
 
 async function startCamera() {
   if (!tmModel) return;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height: { ideal: 960 },
-      },
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } },
       audio: false,
     });
     webcam.srcObject = stream;
     webcam.classList.add('active');
-    camIdle.hidden     = true;
-    camError.hidden    = true;
+
+    // Hide idle screen, show scan UI
+    screenIdle.hidden  = true;
+    screenError.hidden = true;
     scanOverlay.hidden = false;
-    btnStart.disabled  = true;
-    btnStop.disabled   = false;
+    resultSheet.hidden = false;
+    guideToggle.hidden = false;
+
+    btnStart.disabled = true;
+    btnStop.disabled  = false;
+
+    showResult('pill', 'Show me one item!');
     history = [];
     rafId = requestAnimationFrame(predict);
   } catch (err) {
-    handleCameraError(err);
+    handleCamError(err);
   }
 }
 
@@ -186,126 +169,118 @@ function stopCamera() {
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   webcam.srcObject = null;
   webcam.classList.remove('active');
-  camIdle.hidden     = false;
-  scanOverlay.hidden = true;
-  btnStart.disabled  = false;
-  btnStop.disabled   = true;
-  history = [];
-  showPanel('placeholder');
-  highlightGuide(null);
-}
 
-function handleCameraError(err) {
-  camIdle.hidden  = true;
-  camError.hidden = false;
-  const msg = {
-    NotAllowedError:       'Camera permission denied. Please allow camera access in your browser settings.',
-    PermissionDeniedError: 'Camera permission denied.',
-    NotFoundError:         'No camera found on this device.',
-    NotReadableError:      'Camera is in use by another application.',
-  }[err.name] || 'Could not access the camera. Please try again.';
-  errorMsg.textContent = msg;
+  screenIdle.hidden  = false;
+  scanOverlay.hidden = true;
+  resultSheet.hidden = true;
+  guideToggle.hidden = true;
+  guideModal.hidden  = true;
+
   btnStart.disabled = false;
   btnStop.disabled  = true;
+  history = [];
 }
 
-// ── Prediction loop ───────────────────────────────────────
+function handleCamError(err) {
+  const msgs = {
+    NotAllowedError:       'Camera permission denied. Allow access in your browser settings, then try again.',
+    PermissionDeniedError: 'Camera permission denied.',
+    NotFoundError:         'No camera found on this device.',
+    NotReadableError:      'Camera is busy. Close other apps using the camera.',
+  };
+  showErrorScreen('Camera unavailable', msgs[err.name] || 'Could not access the camera.');
+  btnStop.disabled = true;
+  btnStart.disabled = false;
+}
+
+function showErrorScreen(title, body) {
+  screenIdle.hidden  = true;
+  screenError.hidden = false;
+  $('errorTitle').textContent = title;
+  $('errorBody').textContent  = body;
+}
+
+// ── Prediction ──
 async function predict() {
   if (!tmModel || !webcam.srcObject) return;
   try {
     const preds = await tmModel.predict(webcam);
     processPredictions(preds);
-  } catch (e) {
-    // Transient errors during prediction — log and continue
-    console.warn('[BinGo] Predict error:', e);
-  }
+  } catch(e) { /* transient */ }
   rafId = requestAnimationFrame(predict);
 }
 
 function processPredictions(preds) {
-  // Top class by raw probability
   const top = preds.reduce((a, b) => a.probability > b.probability ? a : b);
-  const rawLabel = top.className.toUpperCase().trim();
-  const rawConf  = top.probability;
+  const label = top.className.toUpperCase().trim();
+  const conf  = top.probability;
 
-  // Smoothing: majority vote over recent N frames
-  history.push(rawLabel);
+  history.push(label);
   if (history.length > SMOOTH_N) history.shift();
 
   const counts = {};
   history.forEach(l => counts[l] = (counts[l] || 0) + 1);
   const smoothed = Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b);
-
-  // Use the live confidence of the smoothed winner
-  const smoothedConf = preds.find(p => p.className.toUpperCase().trim() === smoothed)?.probability ?? rawConf;
+  const smoothedConf = preds.find(p => p.className.toUpperCase().trim() === smoothed)?.probability ?? conf;
 
   renderResult(smoothed, smoothedConf);
 }
 
 function renderResult(label, conf) {
-  // Always clear guide highlights first
-  highlightGuide(null);
+  // Clear guide highlights
+  document.querySelectorAll('.guide-item').forEach(el => el.style.outline = '');
 
   if (label === 'NONE') {
-    showPanel('noitem');
+    showResult('pill', 'Point at an item to sort it');
+    pillDot.style.background = '#71717a';
     return;
   }
 
   const bin = BIN[label];
 
   if (!bin || conf < THRESHOLD) {
-    showPanel('unsure');
+    showResult('unsure');
     const pct = Math.round(conf * 100);
-    rcPctU.textContent     = pct + '%';
-    rcFillU.style.width    = pct + '%';
+    unsureConfPct.textContent = pct + '%';
     return;
   }
 
   // Confident result
-  showPanel('result');
+  showResult('card');
 
-  rcIcon.textContent = bin.icon;
-  rcName.textContent = bin.display;
-  rcName.dataset.bin = bin.attr;
-
-  rcBinSwatch.style.cssText = bin.swatchBg;
-  rcBinLabel.textContent    = bin.binLabel;
-
-  rcTip.textContent = bin.tip;
+  rcCategory.textContent = bin.display;
+  rcIcon.textContent     = bin.icon;
+  rcBinDot.style.cssText = `background:${bin.color}; box-shadow:0 0 8px ${bin.color}`;
+  rcBinText.textContent  = bin.bin;
+  rcTip.textContent      = bin.tip;
 
   const pct = Math.round(conf * 100);
-  rcPct.textContent  = pct + '%';
-  rcFill.style.width = pct + '%';
-  rcFill.dataset.bin = bin.attr;
-  rcProgressBar.setAttribute('aria-valuenow', pct);
+  rcConfPct.textContent    = pct + '%';
+  rcBarFill.style.width    = pct + '%';
 
-  // Card accent via data-bin attribute (styled in CSS)
-  resultCard.dataset.bin = bin.attr;
+  // Apply bin color as accent
+  resultCard.style.setProperty('--accent-color', bin.color);
+  rcBarFill.style.background = bin.color;
 
-  highlightGuide(bin.guideId);
+  // Highlight guide
+  const guideEl = $(bin.guideId);
+  if (guideEl) guideEl.style.outline = `2px solid ${bin.color}`;
 }
 
-// ── UI panel switcher ─────────────────────────────────────
-function showPanel(panel) {
-  resultPlaceholder.hidden = panel !== 'placeholder';
-  resultCard.hidden        = panel !== 'result';
-  resultUnsure.hidden      = panel !== 'unsure';
-  resultNoItem.hidden      = panel !== 'noitem';
-}
-
-// ── Guide highlight ────────────────────────────────────────
-function highlightGuide(id) {
-  document.querySelectorAll('.guide-tile').forEach(el => el.classList.remove('highlighted'));
-  if (id) {
-    const tile = get(id);
-    if (tile) tile.classList.add('highlighted');
+function showResult(mode, text) {
+  resultPill.hidden   = mode !== 'pill';
+  resultCard.hidden   = mode !== 'card';
+  resultUnsure.hidden = mode !== 'unsure';
+  if (mode === 'pill' && text) {
+    pillText.textContent = text;
+    pillDot.style.background = '#22c55e';
   }
 }
 
-// ── Init ────────────────────────────────────────────────
+// ── Init ──
 (function init() {
   btnStart.disabled = true;
   btnStop.disabled  = true;
-  showPanel('placeholder');
-  loadModel(); // loads model then auto-starts camera
+  guideToggle.hidden = true;
+  loadModel();
 }());
