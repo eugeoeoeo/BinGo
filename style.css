@@ -42,7 +42,7 @@ html, body {
   overflow: hidden;
 }
 
-/* ── Video (fills everything) ── */
+/* ── Video (fills viewfinder) ── */
 #webcam {
   position: absolute;
   inset: 0;
@@ -52,9 +52,16 @@ html, body {
   z-index: 1;
   display: none;
   background: #000;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #webcam.active { display: block; }
+
+/* Mirror horizontally for natural desktop/front camera view */
+#webcam.mirrored {
+  transform: scaleX(-1);
+}
+
 
 /* ── Top bar ── */
 .top-bar {
@@ -110,7 +117,14 @@ html, body {
   0%,100% { opacity: 1; } 50% { opacity: 0.3; }
 }
 
-.btn-icon-stop {
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-icon-action {
   background: var(--glass);
   border: 1px solid var(--glass-border);
   border-radius: 50%;
@@ -120,12 +134,36 @@ html, body {
   cursor: pointer;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
   flex-shrink: 0;
 }
 
-.btn-icon-stop:hover:not(:disabled) { background: rgba(239,68,68,0.25); color: #fca5a5; }
-.btn-icon-stop:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-icon-action:hover:not(:disabled) {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+}
+
+.btn-icon-action:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.btn-icon-action.active-mirror {
+  color: var(--green);
+  background: rgba(34,197,94,0.16);
+  border-color: rgba(34,197,94,0.35);
+}
+
+.btn-icon-action.btn-stop:hover:not(:disabled) {
+  background: rgba(239,68,68,0.25);
+  color: #fca5a5;
+  border-color: rgba(239,68,68,0.3);
+}
+
+.btn-icon-action:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 
 /* ── Screens (idle / error) ── */
 .screen {
@@ -241,8 +279,9 @@ html, body {
 /* Corner frame */
 .scan-frame {
   position: absolute;
-  top: 80px; left: 24px; right: 24px;
-  bottom: 280px; /* leave room for result sheet */
+  top: 75px; left: 24px; right: 24px;
+  bottom: 230px; /* leave room for result sheet */
+  overflow: hidden;
 }
 
 .sf {
@@ -257,26 +296,27 @@ html, body {
 .sf.bl { bottom:0; left:0;  border-width:0 0 2px 2px; border-radius:0 0 0 4px; }
 .sf.br { bottom:0; right:0; border-width:0 2px 2px 0; border-radius:0 0 4px 0; }
 
-/* Scan beam */
+/* Scan beam (contained inside scan-frame) */
 .scan-beam {
   position: absolute;
-  left: 24px; right: 24px;
-  height: 1.5px;
+  left: 0; right: 0;
+  top: 0;
+  height: 2px;
   background: linear-gradient(90deg, transparent, var(--green), transparent);
-  box-shadow: 0 0 10px 2px rgba(34,197,94,0.5);
-  top: 80px;
+  box-shadow: 0 0 12px 2px rgba(34,197,94,0.6);
   animation: beamSweep 2.8s ease-in-out infinite;
-  will-change: transform;
+  will-change: top, opacity;
 }
 
 @keyframes beamSweep {
-  0%   { transform: translateY(0); opacity: 1; }
-  45%  { transform: translateY(calc(100dvh - 360px)); opacity: 1; }
+  0%   { top: 0%; opacity: 0.8; }
+  46%  { top: calc(100% - 2px); opacity: 1; }
   48%  { opacity: 0; }
-  50%  { transform: translateY(0); opacity: 0; }
-  52%  { opacity: 1; }
-  100% { transform: translateY(0); opacity: 1; }
+  50%  { top: 0%; opacity: 0; }
+  52%  { opacity: 0.8; }
+  100% { top: 0%; opacity: 0.8; }
 }
+
 
 /* ── Result Sheet (overlaid at bottom of camera) ── */
 .result-sheet {
@@ -595,11 +635,47 @@ html, body {
   .rc-bar-fill { transition: none !important; }
 }
 
-/* ── Desktop: max-width container ── */
-@media (min-width: 600px) {
-  .result-sheet { max-width: 520px; left: 50%; transform: translateX(-50%); right: auto; }
-  .guide-toggle { right: calc(50% - 246px); }
-  .scan-frame   { left: calc(50% - 236px); right: calc(50% - 236px); }
-  .scan-beam    { left: calc(50% - 236px); right: calc(50% - 236px); }
-  .idle-center  { max-width: 400px; }
+/* ── Desktop & PC layout: contained sleek phone viewfinder (NOT fullscreen) ── */
+@media (min-width: 768px) {
+  html, body {
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at 50% 30%, #0d2217 0%, #060608 75%);
+    padding: 24px 16px;
+    box-sizing: border-box;
+  }
+
+  .app-shell {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: 430px;
+    height: min(88vh, 820px);
+    border-radius: 36px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+      0 30px 80px -20px rgba(0, 0, 0, 0.95),
+      0 0 50px rgba(34, 197, 94, 0.12),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+    background: #000;
+  }
+
+  /* Center the guide modal on desktop */
+  .guide-modal {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .guide-modal-inner {
+    max-width: 430px;
+    border-radius: 28px;
+    margin: 0 16px;
+  }
 }

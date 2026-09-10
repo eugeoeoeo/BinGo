@@ -1,13 +1,14 @@
 'use strict';
 /**
  * BinGo — app.js
- * Full-screen camera app. AI result overlaid at bottom.
+ * Mobile-first camera app with desktop phone-viewport container.
+ * AI result overlaid at bottom.
  * Model: waste_sorting_ai/ (RECYCLABLE, RESIDUAL, BIODEGRADEABLE, NONE)
  */
 
 const MODEL_URL    = './waste_sorting_ai/model.json';
 const METADATA_URL = './waste_sorting_ai/metadata.json';
-const THRESHOLD    = 0.75;
+const THRESHOLD    = 0.65; // Show suggestions starting at 65% confidence
 const SMOOTH_N     = 6;
 
 const BIN = {
@@ -40,6 +41,7 @@ const webcam       = $('webcam');
 const btnStart     = $('btnStart');
 const btnStop      = $('btnStop');
 const btnRetry     = $('btnRetry');
+const btnMirror    = $('btnMirror');
 const screenIdle   = $('screenIdle');
 const screenError  = $('screenError');
 const scanOverlay  = $('scanOverlay');
@@ -71,6 +73,7 @@ let rafId            = null;
 let stream           = null;
 let history          = [];
 let isStartingCamera = false;
+let isMirrored       = false;
 
 // ── UI State Machine ──
 function setUIState(state) {
@@ -98,6 +101,24 @@ function showErrorScreen(title, body) {
 function setStatus(state, label) {
   statusDot.className = 'status-dot ' + state;
   statusText.textContent = label;
+}
+
+// ── Mirror / Flip Handler ──
+function setMirrored(mirrored) {
+  isMirrored = mirrored;
+  if (webcam) {
+    webcam.classList.toggle('mirrored', isMirrored);
+  }
+  if (btnMirror) {
+    btnMirror.classList.toggle('active-mirror', isMirrored);
+    btnMirror.setAttribute('aria-pressed', isMirrored ? 'true' : 'false');
+  }
+}
+
+if (btnMirror) {
+  btnMirror.addEventListener('click', () => {
+    setMirrored(!isMirrored);
+  });
 }
 
 // ── Guide modal ──
@@ -172,6 +193,17 @@ async function startCamera(isUserGesture = false) {
     } catch (playErr) {
       console.warn('[BinGo] video.play() warning:', playErr);
     }
+
+    // Determine auto-mirroring:
+    // On desktop/laptop webcams, always mirror so movement matches user perspective.
+    // On mobile rear cameras, do not mirror so waste labels are readable.
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 768);
+    const track = stream.getVideoTracks()[0];
+    const settings = track ? track.getSettings() : {};
+    const facingMode = settings.facingMode || '';
+
+    const shouldMirror = !isMobile || facingMode === 'user';
+    setMirrored(shouldMirror);
 
     setUIState('scanning');
 
@@ -328,7 +360,7 @@ function renderResult(label, conf) {
     return;
   }
 
-  // Confident result
+  // Confident result (>= 65% threshold)
   showResult('card');
 
   rcCategory.textContent = bin.display;

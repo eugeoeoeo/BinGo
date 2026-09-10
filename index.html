@@ -34,9 +34,19 @@
         <span class="status-dot" id="statusDot"></span>
         <span id="statusText">Loading…</span>
       </div>
-      <button class="btn-icon-stop" id="btnStop" disabled aria-label="Stop camera">
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><rect x="2" y="2" width="14" height="14" rx="3"/></svg>
-      </button>
+      <div class="top-bar-actions">
+        <button class="btn-icon-action" id="btnMirror" title="Flip / Mirror camera" aria-label="Mirror camera">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m7 21-4-4 4-4"/>
+            <path d="M3 17h18"/>
+            <path d="m17 3 4 4-4 4"/>
+            <path d="M21 7H3"/>
+          </svg>
+        </button>
+        <button class="btn-icon-action btn-stop" id="btnStop" disabled aria-label="Stop camera" title="Stop camera">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="currentColor"><rect x="2" y="2" width="14" height="14" rx="3"/></svg>
+        </button>
+      </div>
     </header>
 
     <!-- ── IDLE SCREEN (before camera) ── -->
@@ -68,13 +78,12 @@
 
     <!-- ── SCAN OVERLAY (when camera active) ── -->
     <div class="scan-overlay" id="scanOverlay" hidden>
-      <!-- Corner brackets -->
+      <!-- Corner brackets with beam contained inside -->
       <div class="scan-frame">
         <span class="sf tl"></span><span class="sf tr"></span>
         <span class="sf bl"></span><span class="sf br"></span>
+        <div class="scan-beam" id="scanBeam"></div>
       </div>
-      <!-- Scan beam -->
-      <div class="scan-beam" id="scanBeam"></div>
     </div>
 
     <!-- ── RESULT SHEET (overlaid at bottom) ── -->
