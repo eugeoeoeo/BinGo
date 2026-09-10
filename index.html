@@ -1,0 +1,242 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BinGo — See it. Sort it. BinGo!</title>
+  <meta name="description" content="BinGo is an AI-powered waste-sorting assistant that helps you identify which bin an item belongs in. Point your camera at any item!" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="site-header">
+    <div class="container">
+      <div class="header-logo">
+        <div class="logo-icon" aria-hidden="true">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="36" height="36" rx="10" fill="#18181b"/>
+            <rect x="0.5" y="0.5" width="35" height="35" rx="9.5" stroke="white" stroke-opacity="0.08"/>
+            <text x="18" y="25" text-anchor="middle" font-size="18">♻️</text>
+          </svg>
+        </div>
+        <div class="logo-text-group">
+          <span class="logo-wordmark">BinGo</span>
+          <span class="logo-tag">Waste Sorting AI</span>
+        </div>
+      </div>
+      <p class="header-desc">Point your camera at any item — find out which bin it belongs in.</p>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main>
+    <div class="container main-grid">
+
+      <!-- LEFT / TOP: Scanner -->
+      <section class="scanner-col" aria-label="Camera scanner">
+
+        <div class="camera-shell" id="cameraShell">
+
+          <!-- Idle -->
+          <div class="cam-state" id="camIdle">
+            <div class="cam-state-icon">📷</div>
+            <p class="cam-state-title">Ready to sort?</p>
+            <p class="cam-state-body">Tap <strong>Start Camera</strong> below to begin.</p>
+          </div>
+
+          <!-- Video -->
+          <video id="webcam" autoplay playsinline muted aria-label="Live camera feed"></video>
+
+          <!-- Active overlay -->
+          <div class="scan-overlay" id="scanOverlay" hidden>
+            <div class="scan-frame">
+              <span class="sf-corner sf-tl"></span>
+              <span class="sf-corner sf-tr"></span>
+              <span class="sf-corner sf-bl"></span>
+              <span class="sf-corner sf-br"></span>
+            </div>
+            <div class="scan-beam" id="scanBeam"></div>
+            <div class="scan-status">
+              <span class="scan-live-dot" aria-hidden="true"></span>
+              <span id="scanStatus">Show me one item!</span>
+            </div>
+          </div>
+
+          <!-- Error -->
+          <div class="cam-state cam-error" id="camError" hidden>
+            <div class="cam-state-icon">⚠️</div>
+            <p class="cam-state-title">Camera unavailable</p>
+            <p class="cam-state-body" id="errorMsg">Please allow camera access and try again.</p>
+          </div>
+
+        </div>
+
+        <!-- Controls -->
+        <div class="cam-controls">
+          <button class="btn btn-start" id="btnStart" disabled>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><path d="M2 1.5l11 5.5-11 5.5V1.5z"/></svg>
+            Start Camera
+          </button>
+          <button class="btn btn-stop" id="btnStop" disabled>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="2"/></svg>
+            Stop
+          </button>
+        </div>
+
+        <!-- Model status -->
+        <div class="model-pill" id="modelPill">
+          <span class="mpill-dot loading" id="statusDot"></span>
+          <span id="statusText">Loading AI model…</span>
+        </div>
+
+      </section>
+
+      <!-- RIGHT / BOTTOM: Result -->
+      <section class="result-col" aria-live="polite" aria-label="Sorting prediction">
+
+        <!-- Placeholder -->
+        <div class="result-placeholder" id="resultPlaceholder">
+          <div class="rp-inner">
+            <span class="rp-icon" aria-hidden="true">🔍</span>
+            <p class="rp-title">Start scanning</p>
+            <p class="rp-body">Hold an item in front of your camera and BinGo will identify which bin it belongs in.</p>
+          </div>
+        </div>
+
+        <!-- Confident result -->
+        <div class="result-card" id="resultCard" hidden>
+          <div class="rc-eyebrow">AI suggestion</div>
+          <div class="rc-category">
+            <span class="rc-icon" id="rcIcon" aria-hidden="true"></span>
+            <span class="rc-name" id="rcName"></span>
+          </div>
+          <div class="rc-bin-tag" id="rcBinTag">
+            <span class="rc-bin-swatch" id="rcBinSwatch" aria-hidden="true"></span>
+            <span class="rc-bin-label" id="rcBinLabel"></span>
+          </div>
+          <p class="rc-tip" id="rcTip"></p>
+          <div class="rc-confidence">
+            <div class="rcc-header">
+              <span class="rcc-label">AI confidence</span>
+              <span class="rcc-pct" id="rcPct">—</span>
+            </div>
+            <div class="rcc-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="rcProgressBar">
+              <div class="rcc-fill" id="rcFill"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Unsure -->
+        <div class="result-card result-unsure" id="resultUnsure" hidden>
+          <div class="rc-eyebrow">AI suggestion</div>
+          <div class="unsure-row">
+            <span class="unsure-emoji" aria-hidden="true">🤔</span>
+            <div>
+              <p class="unsure-title">I'm not sure yet.</p>
+              <p class="unsure-body">Try moving closer, improving the lighting, or showing only one item at a time.</p>
+            </div>
+          </div>
+          <div class="rc-confidence">
+            <div class="rcc-header">
+              <span class="rcc-label">AI confidence</span>
+              <span class="rcc-pct" id="rcPctU">—</span>
+            </div>
+            <div class="rcc-track">
+              <div class="rcc-fill unsure" id="rcFillU"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- No item -->
+        <div class="result-card result-noitem" id="resultNoItem" hidden>
+          <div class="noitem-row">
+            <span aria-hidden="true">👀</span>
+            <div>
+              <p class="noitem-title">Nothing here yet.</p>
+              <p class="noitem-body">Point the camera at a single item to sort it.</p>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+    </div>
+
+    <!-- SORTING GUIDE -->
+    <div class="container">
+      <section class="guide-section" aria-label="Sorting guide">
+        <h2 class="guide-heading">Sorting Guide</h2>
+        <div class="guide-grid">
+
+          <div class="guide-tile tile-bio" id="guideBio" role="listitem">
+            <div class="tile-header">
+              <span class="tile-swatch" style="background:#22c55e" aria-hidden="true"></span>
+              <div>
+                <p class="tile-bin">Green Bin</p>
+                <p class="tile-type">Biodegradable</p>
+              </div>
+            </div>
+            <ul class="tile-list">
+              <li>Food scraps &amp; peels</li>
+              <li>Leaves &amp; garden waste</li>
+              <li>Eggshells, coffee grounds</li>
+            </ul>
+          </div>
+
+          <div class="guide-tile tile-recycle" id="guideRecycle" role="listitem">
+            <div class="tile-header">
+              <span class="tile-swatch" style="background:#3b82f6" aria-hidden="true"></span>
+              <div>
+                <p class="tile-bin">Blue Bin</p>
+                <p class="tile-type">Recyclable</p>
+              </div>
+            </div>
+            <ul class="tile-list">
+              <li>Clean bottles &amp; cans</li>
+              <li>Cardboard &amp; paper</li>
+              <li>Glass jars &amp; plastic</li>
+            </ul>
+          </div>
+
+          <div class="guide-tile tile-residual" id="guideResidual" role="listitem">
+            <div class="tile-header">
+              <span class="tile-swatch" style="background:#71717a" aria-hidden="true"></span>
+              <div>
+                <p class="tile-bin">Black Bin</p>
+                <p class="tile-type">Residual</p>
+              </div>
+            </div>
+            <ul class="tile-list">
+              <li>Styrofoam &amp; mixed waste</li>
+              <li>Soiled food wrappers</li>
+              <li>Non-recyclable plastics</li>
+            </ul>
+          </div>
+
+        </div>
+      </section>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <div class="container">
+      <p class="footer-note">⚠️ <strong>When in doubt, ask an adult or check your local waste-sorting rules.</strong></p>
+      <p class="footer-sub">BinGo is an educational tool. AI suggestions are not guaranteed to be accurate.</p>
+    </div>
+  </footer>
+
+  <!-- Hidden canvas for inference -->
+  <canvas id="inferCanvas" width="224" height="224" style="display:none" aria-hidden="true"></canvas>
+
+  <!-- TF.js + Teachable Machine (matching the model's trained versions exactly) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.7.4/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.4-alpha2/dist/teachablemachine-image.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

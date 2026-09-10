@@ -1,0 +1,26 @@
+﻿# Dependencies
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local env
+.env
+.env.local
+
+# Vercel
+.vercel
+
+# Agent skills (not part of the app)
+.agents/
