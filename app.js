@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 /**
  * BinGo — app.js
  * Full-screen camera app. AI result overlaid at bottom.
@@ -72,9 +72,17 @@ let stream  = null;
 let history = [];
 
 // ── Guide modal ──
-guideToggle.addEventListener('click', () => { guideModal.hidden = false; });
-guideClose.addEventListener('click',  () => { guideModal.hidden = true; });
-guideModal.addEventListener('click', e => { if (e.target === guideModal) guideModal.hidden = true; });
+function openGuide()  { guideModal.classList.add('open'); }
+function closeGuide() { guideModal.classList.remove('open'); }
+
+guideToggle.addEventListener('click', openGuide);
+guideClose.addEventListener('click',  closeGuide);
+guideModal.addEventListener('click', e => {
+  if (e.target === guideModal) closeGuide();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeGuide();
+});
 
 // ── Model load ──
 async function loadModel() {

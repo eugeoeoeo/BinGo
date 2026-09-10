@@ -1,4 +1,4 @@
-﻿/* ================================================================
+/* ================================================================
    BinGo — style.css  (full-screen camera app layout)
    Design: Camera fills 100dvh. Result overlaid at bottom.
 ================================================================ */
@@ -477,11 +477,14 @@ html, body {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(0,0,0,0.7);
-  display: flex;
+  background: rgba(0,0,0,0.75);
+  display: none;
   align-items: flex-end;
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
+
+.guide-modal.open { display: flex; }
 
 .guide-modal-inner {
   background: #18181b;
@@ -514,15 +517,19 @@ html, body {
 }
 
 .guide-close {
-  background: rgba(255,255,255,0.08);
-  border: none;
-  color: var(--text-2);
-  width: 32px; height: 32px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text);
+  width: 44px; height: 44px;
   border-radius: 50%;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 1rem;
   display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
 }
+
+.guide-close:hover { background: rgba(255,255,255,0.18); }
 
 .guide-list { display: flex; flex-direction: column; gap: 10px; }
 
